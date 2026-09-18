@@ -35,7 +35,6 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20.0);
-// Default Full Body framing
 camera.position.set(0.0, FULL_BODY_CAM.y, FULL_BODY_CAM.z);
 camera.lookAt(0.0, FULL_BODY_CAM.y, 0.0);
 
@@ -79,7 +78,7 @@ loader.load(
     (error) => console.error('Error loading VRM:', error)
 );
 
-// 3. Audio Context & Seductive Female Voice (TTS)
+// 3. Audio Context & Warm, Sweet, Sensual Female Voice Processing
 function getAudioContext() {
     if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -101,8 +100,8 @@ function fallbackSpeechSynthesis(text) {
         window.speechSynthesis.resume();
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.92; // Slightly slower, relaxed sultry tempo
-        utterance.pitch = 1.08; // Soft, warm natural pitch
+        utterance.rate = 0.92;  // Intimate, relaxed pace
+        utterance.pitch = 1.12; // Warm, sweet female tone
 
         const voices = window.speechSynthesis.getVoices();
         const femaleVoice = voices.find(v => 
@@ -166,23 +165,30 @@ function speakText(text) {
         const audio = new Audio();
         audio.crossOrigin = 'anonymous';
         audio.src = ttsUrl;
-        audio.playbackRate = 0.93; // Soft, warm sultry tempo
+        audio.playbackRate = 0.95; // Soft, relaxed intimate tempo
         currentAudio = audio;
 
         try {
             const ctx = getAudioContext();
             const source = ctx.createMediaElementSource(audio);
             
-            // Warm audio lowpass filter for smooth intimate voice
-            const biquadFilter = ctx.createBiquadFilter();
-            biquadFilter.type = 'lowpass';
-            biquadFilter.frequency.setValueAtTime(3800, ctx.currentTime);
+            // Warm bass EQ to give silky depth & intimacy
+            const bassFilter = ctx.createBiquadFilter();
+            bassFilter.type = 'lowshelf';
+            bassFilter.frequency.setValueAtTime(400, ctx.currentTime);
+            bassFilter.gain.setValueAtTime(3.5, ctx.currentTime);
+
+            // Soft highpass filter to smooth harsh frequencies
+            const softFilter = ctx.createBiquadFilter();
+            softFilter.type = 'lowpass';
+            softFilter.frequency.setValueAtTime(3600, ctx.currentTime);
 
             analyser = ctx.createAnalyser();
             analyser.fftSize = 256;
 
-            source.connect(biquadFilter);
-            biquadFilter.connect(analyser);
+            source.connect(bassFilter);
+            bassFilter.connect(softFilter);
+            softFilter.connect(analyser);
             analyser.connect(ctx.destination);
         } catch (e) {
             console.warn('AudioAnalyser connect note:', e);
