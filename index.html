@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Desktop AI Companion</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Import map for Three.js and Three-VRM modules -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "./node_modules/three/build/three.module.js",
+        "three/addons/": "./node_modules/three/examples/jsm/",
+        "@pixiv/three-vrm": "./node_modules/@pixiv/three-vrm/lib/three-vrm.module.js",
+        "@anthropic-ai/sdk": "./node_modules/@anthropic-ai/sdk/index.mjs"
+      }
+    }
+  </script>
+</head>
+
+<body>
+    <!-- View Mode / Avatar Zoom Toolbar -->
+    <div class="top-toolbar">
+        <button id="view-mode-btn" class="icon-btn" title="Toggle Full Body / Upper Body view">👗 Body</button>
+        <button id="zoom-in-btn" class="icon-btn" title="Zoom in">🔍+</button>
+        <button id="zoom-out-btn" class="icon-btn" title="Zoom out">🔍-</button>
+    </div>
+
+    <!-- Drag Handle Region to move the transparent window -->
+    <div class="drag-bar" title="Click and hold to drag window">❖ Stella</div>
+
+    <!-- Subtitle / Speech Bubble -->
+    <div id="dialogue-bubble" class="hidden"></div>
+
+    <!-- WebGL Render Canvas -->
+    <canvas id="avatar-canvas"></canvas>
+
+    <!-- Control Controls / Mic Button & Text Input -->
+    <div class="controls-overlay">
+        <div class="input-row">
+            <input type="text" id="text-input" placeholder="Talk to Stella..." autocomplete="off" />
+            <button id="send-btn" class="action-btn send-btn" title="Send message">Send</button>
+            <button id="mic-btn" class="action-btn mic-btn" title="Click to speak">🎤</button>
+        </div>
+    </div>
+
+    <!-- Window Resize Handle Indicator -->
+    <div class="resize-handle" title="Drag corner to resize">◢</div>
+
+    <script type="module" src="renderer.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,21 @@
+{
+    "name": "desktop-ai-companion",
+    "version": "1.0.0",
+    "description": "Standalone transparent desktop AI companion powered by Claude and Three-VRM",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron ."
+    },
+    "dependencies": {
+        "@anthropic-ai/sdk": "^0.39.0",
+        "@pixiv/three-vrm": "^3.5.5",
+        "dotenv": "^16.6.1",
+        "three": "^0.174.0"
+    },
+    "devDependencies": {
+        "electron": "^35.7.5"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC"
+}
