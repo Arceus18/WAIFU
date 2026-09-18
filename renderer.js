@@ -11,7 +11,6 @@ let isRecording = false;
 
 let audioContext = null;
 let analyser = null;
-let currentAudio = null;
 
 // View Mode presets: Full Body vs Upper Body
 let isFullBody = true;
@@ -42,6 +41,16 @@ const light = new THREE.DirectionalLight(0xffffff, 1.6);
 light.position.set(1.0, 1.5, 1.0).normalize();
 scene.add(light);
 scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+
+// Helper: Strip emojis and markdown formatting
+function stripEmojisAndFormatting(text) {
+    if (!text) return '';
+    return text
+        .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+        .replace(/[*_~`#@$]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
 
 // 2. Load VRM Model & Natural Posture
 function applyNaturalStandingPose(vrm) {
@@ -78,7 +87,7 @@ loader.load(
     (error) => console.error('Error loading VRM:', error)
 );
 
-// 3. Audio Context & Warm, Sweet, Sensual Female Voice Processing
+// 3. Clean, Natural Female Speech Synthesis (TTS)
 function getAudioContext() {
     if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -89,8 +98,12 @@ function getAudioContext() {
     return audioContext;
 }
 
-function fallbackSpeechSynthesis(text) {
+function speakText(rawText) {
     return new Promise((resolve) => {
+        const cleanText = stripEmojisAndFormatting(rawText);
+        bubble.textContent = cleanText;
+        bubble.classList.remove('hidden');
+
         if (!('speechSynthesis' in window)) {
             setTimeout(() => { bubble.classList.add('hidden'); resolve(); }, 3500);
             return;
@@ -98,31 +111,37 @@ function fallbackSpeechSynthesis(text) {
 
         window.speechSynthesis.cancel();
         window.speechSynthesis.resume();
+        getAudioContext();
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.92;  // Intimate, relaxed pace
-        utterance.pitch = 1.12; // Warm, sweet female tone
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.1; // Sweet, natural female voice pitch
 
         const voices = window.speechSynthesis.getVoices();
-        const femaleVoice = voices.find(v => 
+        const preferredVoice = voices.find(v => 
+            v.name.includes('Natural') || 
+            v.name.includes('Jenny') || 
+            v.name.includes('Aria') || 
             v.name.includes('Zira') || 
             v.name.includes('Hazel') || 
-            v.name.includes('Natural') || 
-            v.name.includes('Aria') || 
-            v.name.includes('Jenny') || 
             v.name.includes('Samantha') ||
-            v.lang.includes('en')
-        );
-        if (femaleVoice) utterance.voice = femaleVoice;
+            (v.lang.includes('en') && v.name.toLowerCase().includes('female'))
+        ) || voices.find(v => v.lang.includes('en-US')) || voices[0];
+
+        if (preferredVoice) {
+            utterance.voice = preferredVoice;
+        }
+
+        isSpeaking = true;
 
         let mouthInterval = setInterval(() => {
             if (currentVrm?.expressionManager) {
-                const randomMouth = Math.random() * 0.7;
+                const randomMouth = Math.random() * 0.75;
                 currentVrm.expressionManager.setValue('aa', randomMouth);
-                currentVrm.expressionManager.setValue('oh', randomMouth * 0.35);
+                currentVrm.expressionManager.setValue('oh', randomMouth * 0.3);
                 currentVrm.expressionManager.update();
             }
-        }, 90);
+        }, 85);
 
         const cleanup = () => {
             isSpeaking = false;
@@ -132,108 +151,27 @@ function fallbackSpeechSynthesis(text) {
                 currentVrm.expressionManager.setValue('oh', 0);
                 currentVrm.expressionManager.update();
             }
-            setTimeout(() => bubble.classList.add('hidden'), 3500);
+            setTimeout(() => bubble.classList.add('hidden'), 4000);
             resolve();
         };
 
         utterance.onend = cleanup;
-        utterance.onerror = cleanup;
+        utterance.onerror = (e) => {
+            console.warn('SpeechSynthesis error:', e);
+            cleanup();
+        };
+
         window.speechSynthesis.speak(utterance);
 
+        // Keep-alive timer to prevent Chromium speech synthesis freeze
         let resumeTimer = setInterval(() => {
             if (!window.speechSynthesis.speaking) {
                 clearInterval(resumeTimer);
             } else {
                 window.speechSynthesis.resume();
             }
-        }, 400);
+        }, 300);
     });
-}
-
-function speakText(text) {
-    return new Promise((resolve) => {
-        bubble.textContent = text;
-        bubble.classList.remove('hidden');
-        isSpeaking = true;
-
-        if (currentAudio) {
-            currentAudio.pause();
-            currentAudio = null;
-        }
-
-        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=en&client=tw-ob`;
-        const audio = new Audio();
-        audio.crossOrigin = 'anonymous';
-        audio.src = ttsUrl;
-        audio.playbackRate = 0.95; // Soft, relaxed intimate tempo
-        currentAudio = audio;
-
-        try {
-            const ctx = getAudioContext();
-            const source = ctx.createMediaElementSource(audio);
-            
-            // Warm bass EQ to give silky depth & intimacy
-            const bassFilter = ctx.createBiquadFilter();
-            bassFilter.type = 'lowshelf';
-            bassFilter.frequency.setValueAtTime(400, ctx.currentTime);
-            bassFilter.gain.setValueAtTime(3.5, ctx.currentTime);
-
-            // Soft highpass filter to smooth harsh frequencies
-            const softFilter = ctx.createBiquadFilter();
-            softFilter.type = 'lowpass';
-            softFilter.frequency.setValueAtTime(3600, ctx.currentTime);
-
-            analyser = ctx.createAnalyser();
-            analyser.fftSize = 256;
-
-            source.connect(bassFilter);
-            bassFilter.connect(softFilter);
-            softFilter.connect(analyser);
-            analyser.connect(ctx.destination);
-        } catch (e) {
-            console.warn('AudioAnalyser connect note:', e);
-        }
-
-        audio.onended = () => {
-            isSpeaking = false;
-            if (currentVrm?.expressionManager) {
-                currentVrm.expressionManager.setValue('aa', 0);
-                currentVrm.expressionManager.setValue('oh', 0);
-                currentVrm.expressionManager.update();
-            }
-            setTimeout(() => bubble.classList.add('hidden'), 3500);
-            resolve();
-        };
-
-        audio.onerror = () => {
-            fallbackSpeechSynthesis(text).then(resolve);
-        };
-
-        audio.play().catch(err => {
-            console.warn('Online TTS play issue, using browser TTS fallback:', err);
-            fallbackSpeechSynthesis(text).then(resolve);
-        });
-    });
-}
-
-function updateLipSync() {
-    if (!analyser || !currentVrm || !isSpeaking) return;
-
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(dataArray);
-
-    let sum = 0;
-    for (let i = 0; i < 32; i++) {
-        sum += dataArray[i];
-    }
-    const averageVolume = sum / 32;
-    const mouthOpenValue = Math.min(1.0, Math.max(0, (averageVolume - 10) / 60));
-
-    if (currentVrm.expressionManager) {
-        currentVrm.expressionManager.setValue('aa', mouthOpenValue);
-        currentVrm.expressionManager.setValue('oh', mouthOpenValue * 0.4);
-        currentVrm.expressionManager.update();
-    }
 }
 
 // 4. Initialize Waifu Agent
@@ -244,11 +182,12 @@ async function handleUserMessage(text) {
     if (!text || !text.trim()) return;
     const userMsg = text.trim();
     if (textInput) textInput.value = '';
-    micBtn.textContent = '⏳ Thinking...';
+    micBtn.textContent = 'Thinking...';
     if (sendBtn) sendBtn.disabled = true;
 
     try {
-        const reply = await agent.chat(userMsg, window.electronAPI.executeCommand);
+        let reply = await agent.chat(userMsg, window.electronAPI.executeCommand);
+        reply = stripEmojisAndFormatting(reply);
         micBtn.textContent = '🎤';
         if (sendBtn) sendBtn.disabled = false;
         await speakText(reply);
@@ -269,7 +208,7 @@ async function toggleMicrophone() {
         }
         isRecording = false;
         micBtn.classList.remove('recording');
-        micBtn.textContent = '⏳ Processing...';
+        micBtn.textContent = 'Processing...';
         return;
     }
 
@@ -286,7 +225,7 @@ async function toggleMicrophone() {
             stream.getTracks().forEach(track => track.stop());
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             
-            micBtn.textContent = '⏳ Transcribing...';
+            micBtn.textContent = 'Transcribing...';
             const transcribedText = await agent.transcribeAudio(audioBlob);
             
             if (transcribedText) {
@@ -300,7 +239,7 @@ async function toggleMicrophone() {
         mediaRecorder.start();
         isRecording = true;
         micBtn.classList.add('recording');
-        micBtn.textContent = '🔴 Listening...';
+        micBtn.textContent = 'Listening...';
 
     } catch (err) {
         console.error('Microphone access error:', err);
@@ -337,7 +276,7 @@ if (viewModeBtn) {
         const targetCam = isFullBody ? FULL_BODY_CAM : UPPER_BODY_CAM;
         camera.position.set(0.0, targetCam.y, targetCam.z);
         camera.lookAt(0.0, targetCam.y, 0.0);
-        viewModeBtn.textContent = isFullBody ? '👗 Body' : '👤 Upper';
+        viewModeBtn.textContent = isFullBody ? 'Body' : 'Upper';
     });
 }
 
@@ -367,7 +306,7 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 7. Render Loop with Alluring Animations & Dynamic Lip Sync
+// 7. Render Loop with Animations & Dynamic Lip Sync
 const clock = new THREE.Clock();
 
 function animate() {
@@ -407,15 +346,13 @@ function animate() {
                 if (leftLowerArm) leftLowerArm.rotation.z = 0.25 + Math.sin(time * 3.0) * 0.05;
                 if (rightLowerArm) rightLowerArm.rotation.z = -0.25 - Math.cos(time * 3.0) * 0.05;
                 if (head) head.rotation.x = Math.sin(time * 2.5) * 0.04;
-                currentVrm.expressionManager?.setValue('happy', 0.6);
+                currentVrm.expressionManager?.setValue('happy', 0.5);
             } else {
                 if (leftUpperArm) leftUpperArm.rotation.z = 1.25;
                 if (rightUpperArm) rightUpperArm.rotation.z = -1.25;
                 if (leftLowerArm) leftLowerArm.rotation.z = 0.25;
                 if (rightLowerArm) rightLowerArm.rotation.z = -0.25;
-                // Soft bedroom/alluring expression
-                currentVrm.expressionManager?.setValue('happy', 0.25);
-                currentVrm.expressionManager?.setValue('relaxed', 0.2);
+                currentVrm.expressionManager?.setValue('happy', 0.2);
             }
         }
 
@@ -423,7 +360,6 @@ function animate() {
         currentVrm.expressionManager?.setValue('blink', blinkVal);
     }
 
-    updateLipSync();
     renderer.render(scene, camera);
 }
 
