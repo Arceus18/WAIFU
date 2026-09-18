@@ -114,16 +114,19 @@ function speakText(rawText) {
         getAudioContext();
 
         const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.1; // Sweet, natural female voice pitch
+        utterance.rate = 0.92;  // Gentle, modest pace (Hinata style)
+        utterance.pitch = 1.22; // Soft, sweet anime female pitch
 
         const voices = window.speechSynthesis.getVoices();
         const preferredVoice = voices.find(v => 
+            v.lang.includes('ja') || 
+            v.name.includes('Nanami') || 
+            v.name.includes('Haruka') || 
+            v.name.includes('Ayumi') ||
             v.name.includes('Natural') || 
-            v.name.includes('Jenny') || 
             v.name.includes('Aria') || 
+            v.name.includes('Jenny') || 
             v.name.includes('Zira') || 
-            v.name.includes('Hazel') || 
             v.name.includes('Samantha') ||
             (v.lang.includes('en') && v.name.toLowerCase().includes('female'))
         ) || voices.find(v => v.lang.includes('en-US')) || voices[0];
