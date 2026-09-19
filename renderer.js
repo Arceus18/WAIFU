@@ -12,6 +12,7 @@ let isAutoConversationActive = false;
 
 let audioContext = null;
 let cachedVoice = null;
+let vadInterval = null;
 
 // View Mode presets: Default to Upper Body view on start
 let isFullBody = false;
@@ -192,9 +193,12 @@ function speakText(rawText) {
     });
 }
 
-// 4. Initialize Waifu Agent
+// 4. Initialize Waifu Agent & Memory
 const env = window.electronAPI.getEnv();
 const agent = new WaifuAgent(env.GROQ_API_KEY || env.ANTHROPIC_API_KEY);
+
+// Load persistent conversation history / memory from memory.json
+agent.loadMemory();
 
 async function handleUserMessage(text) {
     if (!text || !text.trim()) return;
@@ -226,7 +230,56 @@ async function handleUserMessage(text) {
     }
 }
 
-// 5. Microphone Voice Input & Hands-Free Auto Conversation
+// 5. Microphone Voice Input with Silence Detection (VAD) & Hands-Free Auto Conversation
+function setupSilenceDetection(stream) {
+    if (vadInterval) clearInterval(vadInterval);
+
+    try {
+        const ctx = getAudioContext();
+        const vadSource = ctx.createMediaStreamSource(stream);
+        const vadAnalyser = ctx.createAnalyser();
+        vadAnalyser.fftSize = 256;
+        vadSource.connect(vadAnalyser);
+
+        const dataArray = new Uint8Array(vadAnalyser.frequencyBinCount);
+        let hasSpoken = false;
+        let lastSpeechTime = Date.now();
+        const startTime = Date.now();
+
+        vadInterval = setInterval(() => {
+            if (!isRecording) {
+                clearInterval(vadInterval);
+                return;
+            }
+
+            vadAnalyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < 32; i++) {
+                sum += dataArray[i];
+            }
+            const volume = sum / 32;
+
+            if (volume > 14) {
+                hasSpoken = true;
+                lastSpeechTime = Date.now();
+            } else if (hasSpoken && (Date.now() - lastSpeechTime > 1400)) {
+                // 1.4s of silence after speech -> auto-stop recording to trigger response!
+                console.log('VAD: Silence detected after speech, stopping recorder automatically.');
+                clearInterval(vadInterval);
+                stopMicrophoneRecording();
+            } else if (!hasSpoken && (Date.now() - startTime > 7000)) {
+                // 7s max idle timeout without speech -> auto-stop recording
+                console.log('VAD: Max idle timeout reached.');
+                clearInterval(vadInterval);
+                stopMicrophoneRecording();
+            }
+        }, 100);
+
+    } catch (e) {
+        console.warn('VAD setup warning:', e);
+    }
+}
+
 async function startMicrophoneRecording() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -238,6 +291,7 @@ async function startMicrophoneRecording() {
         };
 
         mediaRecorder.onstop = async () => {
+            if (vadInterval) clearInterval(vadInterval);
             stream.getTracks().forEach(track => track.stop());
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             
@@ -262,6 +316,7 @@ async function startMicrophoneRecording() {
         isRecording = true;
         micBtn.classList.add('recording');
         micBtn.textContent = '🔴 Listening...';
+        setupSilenceDetection(stream);
 
     } catch (err) {
         console.error('Microphone access error:', err);
@@ -273,6 +328,7 @@ async function startMicrophoneRecording() {
 }
 
 function stopMicrophoneRecording() {
+    if (vadInterval) clearInterval(vadInterval);
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
     }

@@ -51,6 +51,30 @@ export class WaifuAgent {
     ];
   }
 
+  async loadMemory() {
+    if (typeof window !== 'undefined' && window.electronAPI?.getMemory) {
+      try {
+        const saved = await window.electronAPI.getMemory();
+        if (Array.isArray(saved) && saved.length > 0) {
+          this.conversationHistory = saved;
+          console.log(`Loaded ${saved.length} previous messages into Stella's memory.`);
+        }
+      } catch (e) {
+        console.error('Failed to load memory:', e);
+      }
+    }
+  }
+
+  async persistMemory() {
+    if (typeof window !== 'undefined' && window.electronAPI?.saveMemory) {
+      try {
+        await window.electronAPI.saveMemory(this.conversationHistory);
+      } catch (e) {
+        console.error('Failed to save memory:', e);
+      }
+    }
+  }
+
   async transcribeAudio(audioBlob) {
     try {
       const formData = new FormData();
@@ -154,11 +178,13 @@ export class WaifuAgent {
         const followUpData = await followUpRes.json();
         const finalReply = followUpData.choices[0].message.content || 'Task completed.';
         this.conversationHistory.push({ role: 'assistant', content: finalReply });
+        await this.persistMemory();
         return finalReply;
       }
 
       const reply = message.content || 'I am listening.';
       this.conversationHistory.push({ role: 'assistant', content: reply });
+      await this.persistMemory();
       return reply;
 
     } catch (err) {

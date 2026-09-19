@@ -40,6 +40,9 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
+const fs = require('fs');
+const MEMORY_FILE = path.join(__dirname, 'memory.json');
+
 // IPC Handler: Native Windows command execution
 ipcMain.handle('execute-command', async (event, command) => {
     return new Promise((resolve) => {
@@ -51,4 +54,29 @@ ipcMain.handle('execute-command', async (event, command) => {
             }
         });
     });
+});
+
+// IPC Handler: Load memory history
+ipcMain.handle('get-memory', async () => {
+    try {
+        if (fs.existsSync(MEMORY_FILE)) {
+            const data = fs.readFileSync(MEMORY_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.error('Error loading memory:', e);
+    }
+    return [];
+});
+
+// IPC Handler: Save memory history
+ipcMain.handle('save-memory', async (event, history) => {
+    try {
+        const trimmed = (history || []).slice(-40);
+        fs.writeFileSync(MEMORY_FILE, JSON.stringify(trimmed, null, 2), 'utf8');
+        return { success: true };
+    } catch (e) {
+        console.error('Error saving memory:', e);
+        return { success: false, error: e.message };
+    }
 });
