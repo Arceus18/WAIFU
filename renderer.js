@@ -12,8 +12,8 @@ let isRecording = false;
 let audioContext = null;
 let analyser = null;
 
-// View Mode presets: Full Body vs Upper Body
-let isFullBody = true;
+// View Mode presets: Default to Upper Body view on start
+let isFullBody = false;
 const FULL_BODY_CAM = { y: 0.75, z: 2.3 };
 const UPPER_BODY_CAM = { y: 1.28, z: 1.35 };
 
@@ -34,8 +34,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20.0);
-camera.position.set(0.0, FULL_BODY_CAM.y, FULL_BODY_CAM.z);
-camera.lookAt(0.0, FULL_BODY_CAM.y, 0.0);
+// Default to Upper Body view
+camera.position.set(0.0, UPPER_BODY_CAM.y, UPPER_BODY_CAM.z);
+camera.lookAt(0.0, UPPER_BODY_CAM.y, 0.0);
 
 const light = new THREE.DirectionalLight(0xffffff, 1.6);
 light.position.set(1.0, 1.5, 1.0).normalize();
@@ -114,7 +115,7 @@ function speakText(rawText) {
         getAudioContext();
 
         const utterance = new SpeechSynthesisUtterance(cleanText);
-        utterance.rate = 0.92;  // Gentle, modest pace (Hinata style)
+        utterance.rate = 0.92;  // Gentle, modest pace
         utterance.pitch = 1.22; // Soft, sweet anime female pitch
 
         const voices = window.speechSynthesis.getVoices();
@@ -141,7 +142,8 @@ function speakText(rawText) {
             if (currentVrm?.expressionManager) {
                 const randomMouth = Math.random() * 0.75;
                 currentVrm.expressionManager.setValue('aa', randomMouth);
-                currentVrm.expressionManager.setValue('oh', randomMouth * 0.3);
+                currentVrm.expressionManager.setValue('oh', randomMouth * 0.35);
+                currentVrm.expressionManager.setValue('ih', randomMouth * 0.25);
                 currentVrm.expressionManager.update();
             }
         }, 85);
@@ -152,6 +154,7 @@ function speakText(rawText) {
             if (currentVrm?.expressionManager) {
                 currentVrm.expressionManager.setValue('aa', 0);
                 currentVrm.expressionManager.setValue('oh', 0);
+                currentVrm.expressionManager.setValue('ih', 0);
                 currentVrm.expressionManager.update();
             }
             setTimeout(() => bubble.classList.add('hidden'), 4000);
@@ -166,7 +169,6 @@ function speakText(rawText) {
 
         window.speechSynthesis.speak(utterance);
 
-        // Keep-alive timer to prevent Chromium speech synthesis freeze
         let resumeTimer = setInterval(() => {
             if (!window.speechSynthesis.speaking) {
                 clearInterval(resumeTimer);
@@ -279,7 +281,7 @@ if (viewModeBtn) {
         const targetCam = isFullBody ? FULL_BODY_CAM : UPPER_BODY_CAM;
         camera.position.set(0.0, targetCam.y, targetCam.z);
         camera.lookAt(0.0, targetCam.y, 0.0);
-        viewModeBtn.textContent = isFullBody ? 'Body' : 'Upper';
+        viewModeBtn.textContent = isFullBody ? '👗 Body' : '👤 Upper';
     });
 }
 
@@ -309,7 +311,7 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 7. Render Loop with Animations & Dynamic Lip Sync
+// 7. Render Loop with Natural Conversational Animations & Facial Expressions
 const clock = new THREE.Clock();
 
 function animate() {
@@ -330,32 +332,43 @@ function animate() {
             const leftLowerArm = humanoid.getNormalizedBoneNode('leftLowerArm');
             const rightLowerArm = humanoid.getNormalizedBoneNode('rightLowerArm');
 
-            const s = Math.sin(time * 1.3);
-            const c = Math.cos(time * 0.95);
+            const s = Math.sin(time * 1.4);
+            const c = Math.cos(time * 1.0);
 
-            currentVrm.scene.position.y = s * 0.007;
+            currentVrm.scene.position.y = s * 0.006;
 
-            if (spine) spine.rotation.z = s * 0.015;
-            if (chest) chest.rotation.y = c * 0.025;
-
-            if (head) {
-                head.rotation.y = Math.sin(time * 0.55) * 0.04;
-                head.rotation.z = Math.cos(time * 0.45) * 0.025;
-            }
+            if (spine) spine.rotation.z = s * 0.012;
+            if (chest) chest.rotation.y = c * 0.02;
 
             if (isSpeaking) {
-                if (leftUpperArm) leftUpperArm.rotation.z = 1.25 + Math.sin(time * 4.0) * 0.08;
-                if (rightUpperArm) rightUpperArm.rotation.z = -1.25 - Math.cos(time * 4.0) * 0.08;
-                if (leftLowerArm) leftLowerArm.rotation.z = 0.25 + Math.sin(time * 3.0) * 0.05;
-                if (rightLowerArm) rightLowerArm.rotation.z = -0.25 - Math.cos(time * 3.0) * 0.05;
-                if (head) head.rotation.x = Math.sin(time * 2.5) * 0.04;
-                currentVrm.expressionManager?.setValue('happy', 0.5);
+                // Expressive natural conversational head & body movement during chat
+                if (head) {
+                    head.rotation.x = Math.sin(time * 5.0) * 0.035;
+                    head.rotation.y = Math.cos(time * 2.8) * 0.055;
+                    head.rotation.z = Math.sin(time * 3.5) * 0.025;
+                }
+                if (leftUpperArm) leftUpperArm.rotation.z = 1.15 + Math.sin(time * 4.5) * 0.1;
+                if (rightUpperArm) rightUpperArm.rotation.z = -1.15 - Math.cos(time * 4.5) * 0.1;
+                if (leftLowerArm) leftLowerArm.rotation.z = 0.3 + Math.sin(time * 3.5) * 0.06;
+                if (rightLowerArm) rightLowerArm.rotation.z = -0.3 - Math.cos(time * 3.5) * 0.06;
+                
+                // Conversational expressions
+                currentVrm.expressionManager?.setValue('happy', 0.45);
+                currentVrm.expressionManager?.setValue('relaxed', 0.25);
             } else {
+                if (head) {
+                    head.rotation.y = Math.sin(time * 0.55) * 0.035;
+                    head.rotation.z = Math.cos(time * 0.45) * 0.02;
+                    head.rotation.x = 0;
+                }
                 if (leftUpperArm) leftUpperArm.rotation.z = 1.25;
                 if (rightUpperArm) rightUpperArm.rotation.z = -1.25;
                 if (leftLowerArm) leftLowerArm.rotation.z = 0.25;
                 if (rightLowerArm) rightLowerArm.rotation.z = -0.25;
+                
+                // Idle facial expression
                 currentVrm.expressionManager?.setValue('happy', 0.2);
+                currentVrm.expressionManager?.setValue('relaxed', 0.15);
             }
         }
 
