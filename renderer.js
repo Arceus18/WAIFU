@@ -8,9 +8,10 @@ let isSpeaking = false;
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
+let isAutoConversationActive = false;
 
 let audioContext = null;
-let analyser = null;
+let cachedVoice = null;
 
 // View Mode presets: Default to Upper Body view on start
 let isFullBody = false;
@@ -42,6 +43,31 @@ const light = new THREE.DirectionalLight(0xffffff, 1.6);
 light.position.set(1.0, 1.5, 1.0).normalize();
 scene.add(light);
 scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+
+// Pre-load and cache female voice immediately on startup to prevent male voice default on 1st talk
+function initVoices() {
+    if (!('speechSynthesis' in window)) return;
+    const voices = window.speechSynthesis.getVoices();
+    if (voices && voices.length > 0) {
+        cachedVoice = voices.find(v => 
+            v.name.includes('Zira') || 
+            v.name.includes('Jenny') || 
+            v.name.includes('Aria') || 
+            v.name.includes('Nanami') || 
+            v.name.includes('Haruka') || 
+            v.name.includes('Ayumi') || 
+            v.name.includes('Natural') || 
+            v.name.includes('Hazel') || 
+            v.name.includes('Samantha') ||
+            (v.lang.includes('en') && v.name.toLowerCase().includes('female'))
+        ) || voices.find(v => v.lang.includes('en-US')) || voices[0];
+    }
+}
+
+initVoices();
+if ('speechSynthesis' in window) {
+    window.speechSynthesis.onvoiceschanged = initVoices;
+}
 
 // Helper: Strip emojis and markdown formatting
 function stripEmojisAndFormatting(text) {
@@ -88,7 +114,7 @@ loader.load(
     (error) => console.error('Error loading VRM:', error)
 );
 
-// 3. Clean, Natural Female Speech Synthesis (TTS)
+// 3. Guaranteed Female Speech Synthesis (TTS)
 function getAudioContext() {
     if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -118,22 +144,9 @@ function speakText(rawText) {
         utterance.rate = 0.92;  // Gentle, modest pace
         utterance.pitch = 1.22; // Soft, sweet anime female pitch
 
-        const voices = window.speechSynthesis.getVoices();
-        const preferredVoice = voices.find(v => 
-            v.lang.includes('ja') || 
-            v.name.includes('Nanami') || 
-            v.name.includes('Haruka') || 
-            v.name.includes('Ayumi') ||
-            v.name.includes('Natural') || 
-            v.name.includes('Aria') || 
-            v.name.includes('Jenny') || 
-            v.name.includes('Zira') || 
-            v.name.includes('Samantha') ||
-            (v.lang.includes('en') && v.name.toLowerCase().includes('female'))
-        ) || voices.find(v => v.lang.includes('en-US')) || voices[0];
-
-        if (preferredVoice) {
-            utterance.voice = preferredVoice;
+        if (!cachedVoice) initVoices();
+        if (cachedVoice) {
+            utterance.voice = cachedVoice;
         }
 
         isSpeaking = true;
@@ -196,6 +209,16 @@ async function handleUserMessage(text) {
         micBtn.textContent = '🎤';
         if (sendBtn) sendBtn.disabled = false;
         await speakText(reply);
+
+        // Hands-Free Auto-Conversation Mode: Automatically resume listening on speech end!
+        if (isAutoConversationActive) {
+            setTimeout(() => {
+                if (isAutoConversationActive && !isSpeaking && !isRecording) {
+                    startMicrophoneRecording();
+                }
+            }, 500);
+        }
+
     } catch (err) {
         console.error('Error handling message:', err);
         micBtn.textContent = '🎤';
@@ -203,20 +226,8 @@ async function handleUserMessage(text) {
     }
 }
 
-// 5. Microphone Voice Input via MediaRecorder + Groq Whisper API
-async function toggleMicrophone() {
-    getAudioContext();
-
-    if (isRecording) {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
-        }
-        isRecording = false;
-        micBtn.classList.remove('recording');
-        micBtn.textContent = 'Processing...';
-        return;
-    }
-
+// 5. Microphone Voice Input & Hands-Free Auto Conversation
+async function startMicrophoneRecording() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioChunks = [];
@@ -236,21 +247,49 @@ async function toggleMicrophone() {
             if (transcribedText) {
                 await handleUserMessage(transcribedText);
             } else {
-                micBtn.textContent = '🎤';
-                if (textInput) textInput.focus();
+                micBtn.textContent = isAutoConversationActive ? '🔴 Auto Mode' : '🎤';
+                if (isAutoConversationActive) {
+                    setTimeout(() => {
+                        if (isAutoConversationActive && !isSpeaking && !isRecording) {
+                            startMicrophoneRecording();
+                        }
+                    }, 800);
+                }
             }
         };
 
         mediaRecorder.start();
         isRecording = true;
         micBtn.classList.add('recording');
-        micBtn.textContent = 'Listening...';
+        micBtn.textContent = '🔴 Listening...';
 
     } catch (err) {
         console.error('Microphone access error:', err);
+        isRecording = false;
+        isAutoConversationActive = false;
         micBtn.classList.remove('recording');
         micBtn.textContent = '🎤';
-        if (textInput) textInput.focus();
+    }
+}
+
+function stopMicrophoneRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    micBtn.textContent = 'Processing...';
+}
+
+function toggleMicrophone() {
+    getAudioContext();
+
+    if (isRecording) {
+        isAutoConversationActive = false; // Turn off auto hands-free mode on user click
+        stopMicrophoneRecording();
+    } else {
+        isAutoConversationActive = true;  // Activate auto hands-free mode
+        startMicrophoneRecording();
     }
 }
 
@@ -341,7 +380,6 @@ function animate() {
             if (chest) chest.rotation.y = c * 0.02;
 
             if (isSpeaking) {
-                // Expressive natural conversational head & body movement during chat
                 if (head) {
                     head.rotation.x = Math.sin(time * 5.0) * 0.035;
                     head.rotation.y = Math.cos(time * 2.8) * 0.055;
@@ -352,7 +390,6 @@ function animate() {
                 if (leftLowerArm) leftLowerArm.rotation.z = 0.3 + Math.sin(time * 3.5) * 0.06;
                 if (rightLowerArm) rightLowerArm.rotation.z = -0.3 - Math.cos(time * 3.5) * 0.06;
                 
-                // Conversational expressions
                 currentVrm.expressionManager?.setValue('happy', 0.45);
                 currentVrm.expressionManager?.setValue('relaxed', 0.25);
             } else {
@@ -366,7 +403,6 @@ function animate() {
                 if (leftLowerArm) leftLowerArm.rotation.z = 0.25;
                 if (rightLowerArm) rightLowerArm.rotation.z = -0.25;
                 
-                // Idle facial expression
                 currentVrm.expressionManager?.setValue('happy', 0.2);
                 currentVrm.expressionManager?.setValue('relaxed', 0.15);
             }
